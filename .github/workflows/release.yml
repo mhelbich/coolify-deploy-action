@@ -1,0 +1,23 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  release:
+    name: Tag major version
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Move major version tag
+        run: |
+          MAJOR="v$(echo "${{ github.event.release.tag_name }}" | cut -d. -f1 | tr -d v)"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -fa "$MAJOR" -m "Release ${{ github.event.release.tag_name }}"
+          git push origin "$MAJOR" --force

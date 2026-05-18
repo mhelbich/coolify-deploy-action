@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+  build:
+    name: Build & Check dist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Build dist
+        run: npm run package
+
+      - name: Verify dist is committed and up to date
+        run: |
+          if [ -n "$(git diff --name-only dist/)" ]; then
+            echo "dist/ is out of date. Run 'npm run bundle' and commit the result."
+            git diff dist/
+            exit 1
+          fi
