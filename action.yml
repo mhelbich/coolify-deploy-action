@@ -1,0 +1,30 @@
+name: Coolify Deploy
+description: Trigger a Coolify deployment and wait for it to finish
+author: mhelbich
+
+branding:
+  icon: upload-cloud
+  color: purple
+
+inputs:
+  host:
+    description: Coolify host (e.g. coolify.example.com)
+    required: true
+  token:
+    description: Coolify API token
+    required: true
+  uuid:
+    description: Coolify app UUID
+    required: true
+  pr-number:
+    description: Pull request number for preview deployments
+    required: false
+    default: ""
+
+outputs:
+  deployment-uuid:
+    description: The Coolify deployment UUID
+
+runs:
+  using: node24
+  main: dist/index.js
