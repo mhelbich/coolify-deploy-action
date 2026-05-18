@@ -61,37 +61,31 @@ on:
     types: [opened, synchronize, reopened]
 
 jobs:
-  lint:
+  ci:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run build
+      - name: Install dependencies
+        run: npm ci
+      - name: Lint
+        run: npm run lint
+      - name: Build
+        run: npm run build
 
   deploy-production:
-    needs: [lint, build]
+    needs: ci
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     environment:
       name: production
       url: https://example.com
     steps:
-      - uses: actions/checkout@v6
       - uses: mhelbich/coolify-deploy-action@v1
         with:
           host: ${{ secrets.COOLIFY_HOST }}
@@ -99,14 +93,13 @@ jobs:
           uuid: ${{ secrets.COOLIFY_APP_UUID }}
 
   deploy-preview:
-    needs: [lint, build]
+    needs: ci
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: preview
       url: https://${{ github.event.pull_request.number }}.preview.example.com
     steps:
-      - uses: actions/checkout@v6
       - uses: mhelbich/coolify-deploy-action@v1
         with:
           host: ${{ secrets.COOLIFY_HOST }}
