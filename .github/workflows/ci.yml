@@ -7,35 +7,27 @@ on:
     branches: [main]
 
 jobs:
-  test:
-    name: Test
+  ci:
+    name: CI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@v6
 
-      - uses: actions/setup-node@v6
+      - name: Set up Node
+        uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm
 
-      - run: npm ci
-      - run: npm test
-
-  build:
-    name: Build & Check dist
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
       - name: Check formatting
         run: npm run format:check
+
+      - name: Test
+        run: npm test
 
       - name: Build dist
         run: npm run package
