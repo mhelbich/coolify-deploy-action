@@ -69,7 +69,7 @@ done <<<"$env_lines"
 
 # ── 2. Trigger the deployment ───────────────────────────────────────────────
 
-status="$(api GET "/deploy?uuid=$uuid")"
+status="$(api POST "/deploy?uuid=$uuid")"
 is_success "$status" || fail "Triggering the deployment failed (HTTP $status): $(cat "$response_file")"
 
 # Response shape: {"deployments":[{"message":…,"resource_uuid":…,"deployment_uuid":…}]}
