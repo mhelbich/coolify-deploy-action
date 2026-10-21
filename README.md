@@ -54,7 +54,7 @@ repository **variables** keeps them readable in logs.
 | Step                | Request                                                             |
 | ------------------- | ------------------------------------------------------------------- |
 | Set each `env` pair | `PATCH /api/v1/applications/{uuid}/envs` with `{"key","value"}`     |
-| Trigger             | `GET /api/v1/deploy?uuid={uuid}` → `deployments[0].deployment_uuid` |
+| Trigger             | `POST /api/v1/deploy?uuid={uuid}` → `deployments[0].deployment_uuid` |
 | Wait                | `GET /api/v1/deployments/{deployment_uuid}` until a final status    |
 
 Final statuses: `finished` succeeds; `failed` and `cancelled-by-user` fail the step. `queued` and

@@ -59,8 +59,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.send(404, {"message": "Environment variable not found."})
         self.send(201, {"uuid": "env789", "key": data["key"], "value": data["value"]})
 
-    def do_GET(self):
-        global polls
+    def do_POST(self):
         if not self.authorized():
             return
         parsed = urlparse(self.path)
@@ -74,6 +73,16 @@ class Handler(BaseHTTPRequestHandler):
                     "deployment_uuid": DEPLOYMENT_UUID,
                 }]
             })
+        self.send(404, {"message": "Not found."})
+
+    def do_GET(self):
+        global polls
+        if not self.authorized():
+            return
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/v1/deploy":
+            # What Coolify answers since it made deploy a POST.
+            return self.send(405, {"message": "This endpoint has changed to a POST request."})
         if parsed.path == f"/api/v1/deployments/{DEPLOYMENT_UUID}":
             polls += 1
             if polls == 1:
