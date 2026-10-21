@@ -6,36 +6,74 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
-  ci:
-    name: CI
+  lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
+      # shellcheck is preinstalled on GitHub-hosted Ubuntu runners
+      - name: shellcheck
+        run: shellcheck deploy.sh test/run.sh
 
-      - name: Install dependencies
-        run: npm ci
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" --workdir /repo rhysd/actionlint:1.7.12 -color
 
-      - name: Check formatting
-        run: npm run format:check
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
 
-      - name: Test
-        run: npm test
+      - name: Scenario tests (deploy.sh against a mock Coolify API)
+        run: bash test/run.sh
 
-      - name: Build dist
-        run: npm run package
+  # Runs the action itself (action.yml wiring, inputs, outputs) against the mock
+  action:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
 
-      - name: Verify dist is committed and up to date
+      - name: Start mock Coolify (success on 18080, failed on 18081)
         run: |
-          if [ -n "$(git diff --name-only dist/)" ]; then
-            echo "dist/ is out of date. Run 'npm run bundle' and commit the result."
-            git diff dist/
-            exit 1
-          fi
+          python3 test/mock-coolify.py 18080 success &
+          python3 test/mock-coolify.py 18081 failed &
+          for port in 18080 18081; do
+            for _ in $(seq 50); do curl -s -o /dev/null "http://127.0.0.1:$port/" && break; sleep 0.1; done
+          done
+
+      - id: ok
+        uses: ./
+        with:
+          url: http://127.0.0.1:18080
+          token: test-token
+          uuid: app123
+          env: |
+            IMAGE_TAG=v1.2.3
+          poll-interval: 1
+
+      - id: failing
+        uses: ./
+        continue-on-error: true
+        with:
+          url: http://127.0.0.1:18081
+          token: test-token
+          uuid: app123
+          poll-interval: 1
+
+      - name: Check results
+        env:
+          OK_OUTCOME: ${{ steps.ok.outcome }}
+          OK_UUID: ${{ steps.ok.outputs.deployment-uuid }}
+          FAILING_OUTCOME: ${{ steps.failing.outcome }}
+        run: |
+          set -x
+          [[ "$OK_OUTCOME" == success ]]
+          [[ "$OK_UUID" == dep456 ]]
+          [[ "$FAILING_OUTCOME" == failure ]]
+          grep -qx '{"key": "IMAGE_TAG", "value": "v1.2.3"}' env-patches.jsonl
