@@ -1,165 +1,87 @@
 # coolify-deploy-action
 
-A GitHub Action that triggers a [Coolify](https://coolify.io) deployment and waits for it to finish before the workflow step completes. Supports both production and pull request preview deployments.
+A composite GitHub Action that deploys a [Coolify](https://coolify.io) resource:
+
+1. optionally sets environment variables on the resource (e.g. pin `IMAGE_TAG` to a release),
+2. triggers a deployment,
+3. waits for it to finish and fails the step if it doesn't succeed.
+
+Plain bash, `curl` and `jq`. No build step, no Node runtime.
 
 ## Usage
 
 ```yaml
-- uses: mhelbich/coolify-deploy-action@v1
+- uses: mhelbich/coolify-deploy-action@v2
   with:
-    host: ${{ secrets.COOLIFY_HOST }}
-    token: ${{ secrets.COOLIFY_API_TOKEN }}
-    uuid: ${{ secrets.COOLIFY_APP_UUID }}
+    url: ${{ vars.COOLIFY_URL }}
+    token: ${{ secrets.COOLIFY_TOKEN }}
+    uuid: ${{ vars.COOLIFY_APP_UUID }}
+    env: |
+      IMAGE_TAG=${{ github.ref_name }}
 ```
 
-### Preview deployment (pull requests)
-
-Pass `pr-number` to trigger a Coolify PR preview deployment instead of the main deployment:
-
-```yaml
-- uses: mhelbich/coolify-deploy-action@v1
-  with:
-    host: ${{ secrets.COOLIFY_HOST }}
-    token: ${{ secrets.COOLIFY_API_TOKEN }}
-    uuid: ${{ secrets.COOLIFY_APP_UUID }}
-    pr-number: ${{ github.event.pull_request.number }}
-```
+Only the token is a secret. The URL and the resource UUID are not sensitive, and keeping them in
+repository **variables** keeps them readable in logs.
 
 ## Inputs
 
-| Input       | Required | Description                                                  |
-| ----------- | -------- | ------------------------------------------------------------ |
-| `host`      | yes      | Coolify host, e.g. `coolify.example.com`                     |
-| `token`     | yes      | Coolify API token                                            |
-| `uuid`      | yes      | UUID of the Coolify application to deploy                    |
-| `pr-number` | no       | Pull request number — triggers a preview deployment when set |
+| Input           | Required | Default | Description                                                                                 |
+| --------------- | -------- | ------- | ------------------------------------------------------------------------------------------- |
+| `url`           | yes      |         | Coolify base URL including scheme, e.g. `https://coolify.example.com`                       |
+| `token`         | yes      |         | Coolify API token                                                                           |
+| `uuid`          | yes      |         | UUID of the Coolify resource                                                                |
+| `env`           | no       | `""`    | Newline-separated `KEY=value` pairs set before deploying. Each variable must already exist. |
+| `wait`          | no       | `true`  | Wait for the deployment to finish. `false` returns right after triggering                   |
+| `timeout`       | no       | `600`   | Seconds to wait before failing                                                              |
+| `poll-interval` | no       | `10`    | Seconds between status checks                                                               |
 
 ## Outputs
 
-| Output            | Description                                                                       |
-| ----------------- | --------------------------------------------------------------------------------- |
-| `deployment-uuid` | The Coolify deployment UUID, useful for linking to the deployment in Coolify's UI |
+| Output            | Description                 |
+| ----------------- | --------------------------- |
+| `deployment-uuid` | The Coolify deployment UUID |
+
+## Coolify setup
+
+- Settings → Advanced → **API Access** enabled.
+- An API token (Keys & Tokens → API Tokens) with permission **`deploy`**, plus **`write`** when
+  using `env`.
+- Define every variable passed via `env` on the resource first. The action only calls Coolify's
+  update endpoint (`PATCH`); creating variables through it is not supported or tested.
 
 ## How it works
 
-1. Calls `GET /api/v1/deploy?uuid=<uuid>` (with `&pull_request_id=<n>` for previews) to trigger the deployment and receive a `deployment_uuid`.
-2. Polls `GET /api/v1/deployments/<deployment_uuid>` every 10 seconds until the status is one of `finished`, `failed`, `error`, or `cancelled` — or until 60 attempts (10 minutes) have elapsed.
-3. Exits successfully on `finished`, fails the step on any other terminal status or timeout.
+| Step                | Request                                                             |
+| ------------------- | ------------------------------------------------------------------- |
+| Set each `env` pair | `PATCH /api/v1/applications/{uuid}/envs` with `{"key","value"}`     |
+| Trigger             | `GET /api/v1/deploy?uuid={uuid}` → `deployments[0].deployment_uuid` |
+| Wait                | `GET /api/v1/deployments/{deployment_uuid}` until a final status    |
 
-This means the workflow step only completes once Coolify has actually finished deploying, giving you accurate deployment status in GitHub rather than just confirming the webhook was received.
+Final statuses: `finished` succeeds; `failed` and `cancelled-by-user` fail the step. `queued` and
+`in_progress` keep waiting. A failed status request is logged as a warning and retried until the
+timeout. The result is written to the job summary.
 
-## Full example workflow
+Any other API error (wrong token, unknown UUID, missing variable) fails the step with Coolify's
+response body in the log.
 
-```yaml
-name: CI / Deploy
+## Using it from a private repository
 
-on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, synchronize, reopened]
-
-jobs:
-  ci:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-      - name: Install dependencies
-        run: npm ci
-      - name: Lint
-        run: npm run lint
-      - name: Build
-        run: npm run build
-
-  deploy-production:
-    needs: ci
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
-    environment:
-      name: production
-      url: https://example.com
-    steps:
-      - uses: mhelbich/coolify-deploy-action@v1
-        with:
-          host: ${{ secrets.COOLIFY_HOST }}
-          token: ${{ secrets.COOLIFY_API_TOKEN }}
-          uuid: ${{ secrets.COOLIFY_APP_UUID }}
-
-  deploy-preview:
-    needs: ci
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    environment:
-      name: preview
-      url: https://${{ github.event.pull_request.number }}.preview.example.com
-    steps:
-      - uses: mhelbich/coolify-deploy-action@v1
-        with:
-          host: ${{ secrets.COOLIFY_HOST }}
-          token: ${{ secrets.COOLIFY_API_TOKEN }}
-          uuid: ${{ secrets.COOLIFY_APP_UUID }}
-          pr-number: ${{ github.event.pull_request.number }}
-```
+This repository is private. GitHub only lets other repositories use its action when Settings →
+Actions → General → **Access** is set to "Accessible from repositories owned by the user".
 
 ## Development
 
-### Prerequisites
-
-- Node.js 24+
-
-### Setup
-
 ```sh
-npm install
+bash test/run.sh                         # scenario tests against test/mock-coolify.py
+shellcheck deploy.sh test/run.sh
 ```
 
-### Build
-
-Compiles `src/` and bundles everything into `dist/index.js` via Rollup:
-
-```sh
-npm run package
-```
-
-Run formatting and then build in one step:
-
-```sh
-npm run bundle
-```
-
-The `dist/` directory is committed to the repository. The CI workflow verifies that the committed `dist/` matches what would be built from source — if you change `src/`, run `npm run bundle` and commit both.
+CI runs both, plus actionlint and the action itself (`uses: ./`) against the mock.
 
 ### Releasing
 
-Releases use semantic version tags (e.g. `v1.0.0`). A release workflow automatically keeps the major version tag (e.g. `v1`) pointing at the latest release in that major, so consumers using `@v1` always get the latest compatible version without updating their workflows.
+1. Tag and push the exact version: `git tag v2.0.1 && git push origin v2.0.1`
+2. Publish a GitHub release for that tag.
 
-To release:
-
-1. Push the exact version tag:
-   ```sh
-   git tag v1.0.0
-   git push origin v1.0.0
-   ```
-2. Go to the repo on GitHub → **Releases** → **Draft a new release**
-3. Select the tag you just pushed, add release notes, and click **Publish release**
-
-Publishing the release triggers the release workflow, which automatically force-updates the `v1` major tag to point at the same commit.
-
-### Project structure
-
-```
-src/
-  index.ts    — entrypoint, calls run()
-  main.ts     — all logic: trigger deploy, poll for status
-dist/         — compiled bundle (committed)
-action.yml    — action metadata, inputs, outputs
-rollup.config.ts
-tsconfig.json
-```
+The release workflow then moves the major tag (`v2`) to the same commit, so `@v2` users get the
+update.

@@ -1,5 +1,5 @@
 name: Coolify Deploy
-description: Trigger a Coolify deployment and wait for it to finish
+description: Optionally set environment variables on a Coolify resource, trigger a deployment and wait for it to finish
 author: mhelbich
 
 branding:
@@ -7,24 +7,48 @@ branding:
   color: purple
 
 inputs:
-  host:
-    description: Coolify host (e.g. coolify.example.com)
+  url:
+    description: Coolify base URL including scheme, e.g. https://coolify.example.com
     required: true
   token:
-    description: Coolify API token
+    description: Coolify API token (permissions deploy, plus write when using env)
     required: true
   uuid:
-    description: Coolify app UUID
+    description: UUID of the Coolify resource to deploy
     required: true
-  pr-number:
-    description: Pull request number for preview deployments
+  env:
+    description: Newline-separated KEY=value pairs to set on the resource before deploying. Each variable must already exist on the resource.
     required: false
     default: ""
+  wait:
+    description: Wait for the deployment to finish and fail the step if it does not succeed
+    required: false
+    default: "true"
+  timeout:
+    description: Seconds to wait for the deployment before failing
+    required: false
+    default: "600"
+  poll-interval:
+    description: Seconds between deployment status checks
+    required: false
+    default: "10"
 
 outputs:
   deployment-uuid:
     description: The Coolify deployment UUID
+    value: ${{ steps.deploy.outputs.deployment-uuid }}
 
 runs:
-  using: node24
-  main: dist/index.js
+  using: composite
+  steps:
+    - id: deploy
+      shell: bash
+      run: '"$GITHUB_ACTION_PATH/deploy.sh"'
+      env:
+        INPUT_URL: ${{ inputs.url }}
+        INPUT_TOKEN: ${{ inputs.token }}
+        INPUT_UUID: ${{ inputs.uuid }}
+        INPUT_ENV: ${{ inputs.env }}
+        INPUT_WAIT: ${{ inputs.wait }}
+        INPUT_TIMEOUT: ${{ inputs.timeout }}
+        INPUT_POLL_INTERVAL: ${{ inputs.poll-interval }}
