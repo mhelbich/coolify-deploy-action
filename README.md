@@ -64,10 +64,20 @@ timeout. The result is written to the job summary.
 Any other API error (wrong token, unknown UUID, missing variable) fails the step with Coolify's
 response body in the log.
 
-## Using it from a private repository
+## Limitations
 
-This repository is private. GitHub only lets other repositories use its action when Settings →
-Actions → General → **Access** is set to "Accessible from repositories owned by the user".
+- `env` only works for Coolify **Applications** (including git-backed Docker Compose
+  applications): it uses the applications API. Triggering and waiting work for any resource UUID
+  that `/api/v1/deploy` accepts.
+- Variables are updated, not created (see Coolify setup).
+- Tested against a self-hosted Coolify v4 (beta) instance. The API calls used are listed in the
+  table above; if a Coolify release changes them, this action needs an update.
+
+## Versions
+
+Use `@v2`, which follows the latest `v2.x.y`, or pin a full commit SHA. There is no usable `v1`:
+the first, JavaScript-based version never worked against a real Coolify instance and has been
+removed.
 
 ## Development
 
@@ -85,3 +95,7 @@ CI runs both, plus actionlint and the action itself (`uses: ./`) against the moc
 
 The release workflow then moves the major tag (`v2`) to the same commit, so `@v2` users get the
 update.
+
+## License
+
+[MIT](LICENSE)
